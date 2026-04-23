@@ -14,6 +14,7 @@ import { TaskService } from '../services/api';
 
 export const useTasks = () => {
     const [tasks, setTasks] = useState([]);
+    const [users, setUsers] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
 
@@ -21,17 +22,30 @@ export const useTasks = () => {
         setIsLoading(true);
         setError(null);
         try {
-            // Under the hood, this calls our configured Axios instance in api.js
-            // which injects the latest Cognito JWT token automatically.
             const response = await TaskService.getTasks();
-            
-            // Assume the API Gateway + Lambda returns: { items: [...] }
-            setTasks(response.items || []);
+            const normalizedItems = Array.isArray(response)
+                ? response
+                : (response.items || response.tasks || []);
+            setTasks(normalizedItems);
         } catch (err) {
             setError(err.message || 'Failed to fetch tasks');
             console.error('Task fetch error:', err);
         } finally {
             setIsLoading(false);
+        }
+    }, []);
+
+    const fetchUsers = useCallback(async () => {
+        setError(null);
+        try {
+            const response = await TaskService.getUsers();
+            const normalizedUsers = Array.isArray(response)
+                ? response
+                : (response.users || []);
+            setUsers(normalizedUsers);
+        } catch (err) {
+            setError(err.message || 'Failed to fetch users');
+            console.error('User fetch error:', err);
         }
     }, []);
 
@@ -67,12 +81,13 @@ export const useTasks = () => {
         }
     };
 
-    const assignTask = async (taskId, assigneeId) => {
+    const assignTask = async (taskId, assigneeIds) => {
         try {
-            const response = await TaskService.assignTask(taskId, assigneeId);
-            // Optimistic UI Update 
+            const response = await TaskService.assignTask(taskId, assigneeIds);
             setTasks(prev => 
-                prev.map(t => t.id === taskId ? { ...t, assigneeId } : t)
+                prev.map(t => t.id === taskId
+                    ? { ...t, assigneeIds: Array.from(new Set([...(t.assigneeIds || []), ...assigneeIds])) }
+                    : t)
             );
             return response;
         } catch (err) {
@@ -83,9 +98,11 @@ export const useTasks = () => {
 
     return {
         tasks,
+        users,
         isLoading,
         error,
         fetchTasks,
+        fetchUsers,
         createTask,
         updateTaskStatus,
         assignTask

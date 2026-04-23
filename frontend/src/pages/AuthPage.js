@@ -1,41 +1,63 @@
 import React, { useState } from 'react';
-import { signIn, signUp, confirmSignUp } from 'aws-amplify/auth';
+import { signIn, signUp, confirmSignUp, confirmSignIn } from 'aws-amplify/auth';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import styles from './AuthPage.module.css';
 
 const AuthPage = ({ onAuthSuccess }) => {
-    const [mode, setMode] = useState('login'); // 'login', 'signup', 'verify'
+    const [mode, setMode] = useState('login'); 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [verificationCode, setVerificationCode] = useState('');
-    const [error, setError] = useState('');
+    const [newPassword, setNewPassword] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // Enforce business rule: only specific domains
     const validateEmail = (emailAddress) => {
-        return emailAddress.endsWith('@amalitech.com') || emailAddress.endsWith('@amalitechtraining.org');
+        return emailAddress.endsWith('@amalitech.com') || emailAddress.endsWith('@amalitechtraining.org') || emailAddress.endsWith('@gmail.com');
     };
 
     const handleLogin = async (e) => {
         e.preventDefault();
-        setError('');
         setLoading(true);
         try {
-            const { isSignedIn } = await signIn({ username: email, password });
-            if (isSignedIn) {
-                onAuthSuccess(); // Refresh AuthContext session
+            const { isSignedIn, nextStep } = await signIn({ username: email, password });
+            
+            if (nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
+                setMode('newPassword');
+                toast.info('You must change your temporary password.');
+            } else if (isSignedIn) {
+                toast.success('Welcome back!');
+                onAuthSuccess(); 
             }
         } catch (err) {
-            setError(err.message || 'Login failed. Check your credentials.');
+            toast.error(err.message || 'Login failed. Check your credentials.');
         } finally {
             setLoading(false);
         }
     };
 
+    const handleNewPassword = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            const { isSignedIn } = await confirmSignIn({ challengeResponse: newPassword });
+            if (isSignedIn) {
+                toast.success('Password updated successfully!');
+                onAuthSuccess();
+            }
+        } catch (err) {
+            toast.error(err.message || 'Failed to update password.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
     const handleSignUp = async (e) => {
         e.preventDefault();
-        setError('');
         
         if (!validateEmail(email)) {
-            setError('Signup failed: Only @amalitech.com or @amalitechtraining.org emails are allowed.');
+            toast.warning('Only corporate emails (@amalitech.com) are allowed.');
             return;
         }
 
@@ -48,11 +70,10 @@ const AuthPage = ({ onAuthSuccess }) => {
                     userAttributes: { email }
                 }
             });
-            // Proceed to verification step
             setMode('verify');
-            setError('Verification code sent to your email!');
+            toast.success('Verification code sent to your email!');
         } catch (err) {
-            setError(err.message || 'Sign up failed.');
+            toast.error(err.message || 'Sign up failed.');
         } finally {
             setLoading(false);
         }
@@ -60,7 +81,6 @@ const AuthPage = ({ onAuthSuccess }) => {
 
     const handleVerify = async (e) => {
         e.preventDefault();
-        setError('');
         setLoading(true);
         try {
             const { isSignUpComplete } = await confirmSignUp({
@@ -69,214 +89,103 @@ const AuthPage = ({ onAuthSuccess }) => {
             });
             if (isSignUpComplete) {
                 setMode('login');
-                setError('Verification successful! You can now log in.');
+                toast.success('Account verified! You can now log in.');
                 setVerificationCode('');
             }
         } catch (err) {
-            setError(err.message || 'Verification failed. Invalid code.');
+            toast.error('Verification failed. Invalid code.');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div style={styles.container}>
-            <div style={styles.card}>
-                <h2 style={styles.title}>
-                    {mode === 'login' && 'Sign In to Task Manager'}
-                    {mode === 'signup' && 'Create your Account'}
-                    {mode === 'verify' && 'Verify your Email'}
-                </h2>
-                
-                {error && <div style={styles.errorBox}>{error}</div>}
+        <div className={styles.container}>
+            <div className={styles.authWrapper}>
+                <div className={styles.branding}>
+                    <div className={styles.logo}>Z</div>
+                    <h1>Zenith</h1>
+                    <p>Enterprise Task Management</p>
+                </div>
 
-                {mode === 'login' && (
-                    <form onSubmit={handleLogin} style={styles.form}>
-                        <div style={styles.inputGroup}>
-                            <label>Email</label>
-                            <input 
-                                type="email" 
-                                required 
-                                value={email} 
-                                onChange={e => setEmail(e.target.value)} 
-                                style={styles.input} 
-                            />
-                        </div>
-                        <div style={styles.inputGroup}>
-                            <label>Password</label>
-                            <input 
-                                type="password" 
-                                required 
-                                value={password} 
-                                onChange={e => setPassword(e.target.value)} 
-                                style={styles.input} 
-                            />
-                        </div>
-                        <button type="submit" disabled={loading} style={styles.button}>
-                            {loading ? 'Signing in...' : 'Sign In'}
-                        </button>
-                        <div style={styles.footerLink}>
-                            Don't have an account?{' '}
-                            <button type="button" onClick={() => { setMode('signup'); setError(''); }} style={styles.linkButton}>
-                                Sign up
+                <div className={styles.card}>
+                    <h2 className={styles.title}>
+                        {mode === 'login' && 'Sign In'}
+                        {mode === 'signup' && 'Create Account'}
+                        {mode === 'verify' && 'Verify Email'}
+                        {mode === 'newPassword' && 'Reset Password'}
+                    </h2>
+                    
+                    {mode === 'newPassword' && (
+                        <form onSubmit={handleNewPassword} className={styles.form}>
+                            <div className={styles.field}>
+                                <label>New Password</label>
+                                <input type="password" required value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                            </div>
+                            <button type="submit" disabled={loading} className={styles.submitBtn}>
+                                {loading ? 'Updating...' : 'Update Password'}
                             </button>
-                        </div>
-                    </form>
-                )}
+                        </form>
+                    )}
 
-                {mode === 'signup' && (
-                    <form onSubmit={handleSignUp} style={styles.form}>
-                        <div style={styles.inputGroup}>
-                            <label>Organization Email</label>
-                            <input 
-                                type="email" 
-                                placeholder="@amalitech.com or @amalitechtraining.org"
-                                required 
-                                value={email} 
-                                onChange={e => setEmail(e.target.value)} 
-                                style={styles.input} 
-                            />
-                        </div>
-                        <div style={styles.inputGroup}>
-                            <label>Choose a Password</label>
-                            <input 
-                                type="password" 
-                                required 
-                                value={password} 
-                                onChange={e => setPassword(e.target.value)} 
-                                style={styles.input} 
-                            />
-                        </div>
-                        <button type="submit" disabled={loading} style={styles.button}>
-                            {loading ? 'Creating...' : 'Create Account'}
-                        </button>
-                        <div style={styles.footerLink}>
-                            <button type="button" onClick={() => { setMode('verify'); setError(''); }} style={{ ...styles.linkButton, marginRight: '15px' }}>
-                                Have a verification code?
+                    {mode === 'login' && (
+                        <form onSubmit={handleLogin} className={styles.form}>
+                            <div className={styles.field}>
+                                <label>Email Address</label>
+                                <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" />
+                            </div>
+                            <div className={styles.field}>
+                                <label>Password</label>
+                                <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
+                            </div>
+                            <button type="submit" disabled={loading} className={styles.submitBtn}>
+                                {loading ? 'Signing in...' : 'Continue'}
                             </button>
-                            <button type="button" onClick={() => { setMode('login'); setError(''); }} style={styles.linkButton}>
-                                Back to Sign In
-                            </button>
-                        </div>
-                    </form>
-                )}
+                            <p className={styles.switchMode}>
+                                New here? <button type="button" onClick={() => setMode('signup')}>Create an account</button>
+                            </p>
+                        </form>
+                    )}
 
-                {mode === 'verify' && (
-                    <form onSubmit={handleVerify} style={styles.form}>
-                        <p style={{ textAlign: 'center', fontSize: '0.9rem', marginBottom: '1rem', color: '#555' }}>
-                            We sent a verification code to <strong>{email || 'your email'}</strong>
-                        </p>
-                        <div style={styles.inputGroup}>
-                            <label>Confirm Email</label>
-                            <input 
-                                type="email" 
-                                required 
-                                value={email} 
-                                onChange={e => setEmail(e.target.value)} 
-                                style={styles.input} 
-                            />
-                        </div>
-                        <div style={styles.inputGroup}>
-                            <label>Verification Code</label>
-                            <input 
-                                type="text" 
-                                required 
-                                value={verificationCode} 
-                                onChange={e => setVerificationCode(e.target.value)} 
-                                style={styles.input} 
-                            />
-                        </div>
-                        <button type="submit" disabled={loading} style={styles.button}>
-                            {loading ? 'Verifying...' : 'Submit Verification'}
-                        </button>
-                        <div style={styles.footerLink}>
-                            <button type="button" onClick={() => { setMode('login'); setError(''); }} style={styles.linkButton}>
-                                Back to Sign In
+                    {mode === 'signup' && (
+                        <form onSubmit={handleSignUp} className={styles.form}>
+                            <div className={styles.field}>
+                                <label>Work Email</label>
+                                <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@amalitech.com" />
+                            </div>
+                            <div className={styles.field}>
+                                <label>Choose Password</label>
+                                <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 12 characters" />
+                            </div>
+                            <button type="submit" disabled={loading} className={styles.submitBtn}>
+                                {loading ? 'Creating...' : 'Create Account'}
                             </button>
-                        </div>
-                    </form>
-                )}
+                            <div className={styles.footerLinks}>
+                                <button type="button" onClick={() => setMode('verify')}>I have a code</button>
+                                <span>•</span>
+                                <button type="button" onClick={() => setMode('login')}>Back to login</button>
+                            </div>
+                        </form>
+                    )}
+
+                    {mode === 'verify' && (
+                        <form onSubmit={handleVerify} className={styles.form}>
+                            <p className={styles.helpText}>Enter the code sent to {email}</p>
+                            <div className={styles.field}>
+                                <label>Verification Code</label>
+                                <input type="text" required value={verificationCode} onChange={e => setVerificationCode(e.target.value)} placeholder="123456" />
+                            </div>
+                            <button type="submit" disabled={loading} className={styles.submitBtn}>
+                                {loading ? 'Verifying...' : 'Verify Email'}
+                            </button>
+                            <button type="button" className={styles.backBtn} onClick={() => setMode('login')}>Cancel</button>
+                        </form>
+                    )}
+                </div>
             </div>
+            <ToastContainer position="top-right" autoClose={3000} hideProgressBar theme="colored" />
         </div>
     );
-};
-
-// Extremely basic inline styling to keep the example clean and independent
-const styles = {
-    container: {
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        backgroundColor: '#f5f7fa',
-        fontFamily: 'system-ui, -apple-system, sans-serif'
-    },
-    card: {
-        backgroundColor: '#fff',
-        padding: '2rem',
-        borderRadius: '8px',
-        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-        width: '100%',
-        maxWidth: '400px',
-    },
-    title: {
-        marginTop: 0,
-        marginBottom: '1.5rem',
-        textAlign: 'center',
-        color: '#333'
-    },
-    errorBox: {
-        backgroundColor: '#fee2e2',
-        color: '#b91c1c',
-        padding: '0.75rem',
-        borderRadius: '4px',
-        marginBottom: '1rem',
-        fontSize: '0.9rem',
-        border: '1px solid #fca5a5'
-    },
-    form: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1rem'
-    },
-    inputGroup: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.3rem'
-    },
-    input: {
-        padding: '0.75rem',
-        border: '1px solid #cbd5e1',
-        borderRadius: '4px',
-        fontSize: '1rem'
-    },
-    button: {
-        padding: '0.75rem',
-        backgroundColor: '#0284c7',
-        color: 'white',
-        border: 'none',
-        borderRadius: '4px',
-        fontSize: '1rem',
-        fontWeight: 'bold',
-        cursor: 'pointer',
-        marginTop: '0.5rem'
-    },
-    footerLink: {
-        textAlign: 'center',
-        marginTop: '1rem',
-        fontSize: '0.9rem',
-        color: '#64748b'
-    },
-    linkButton: {
-        background: 'none',
-        border: 'none',
-        color: '#0284c7',
-        cursor: 'pointer',
-        textDecoration: 'underline',
-        padding: 0,
-        fontSize: '0.9rem'
-    }
 };
 
 export default AuthPage;

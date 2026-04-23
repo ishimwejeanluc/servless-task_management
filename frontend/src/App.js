@@ -1,13 +1,13 @@
 import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Dashboard from './pages/Dashboard';
+import TeamPage from './pages/TeamPage';
 import AuthPage from './pages/AuthPage';
-
 import { Amplify } from 'aws-amplify';
 
 /**
- * Production-grade Application Root (No React Router configured to keep example simple,
- * but shows where Providers sit in the tree)
+ * Production-grade Application Root
  * 
  * Purpose: Top-level App component wrapping everything in Providers.
  */
@@ -26,25 +26,30 @@ Amplify.configure({
   }
 });
 
-// Basic Router Component
 const AppRoutes = () => {
-  const { isAuthenticated, error, checkcurrentSession } = useAuth();
-  
-  // Constraint 2: "Frontend access without login redirects to authentication flow"
+  const { isAuthenticated, checkcurrentSession } = useAuth();
+
   if (!isAuthenticated) {
     return <AuthPage onAuthSuccess={checkcurrentSession} />;
   }
 
-  // If authenticated, show the dashboard
-  return <Dashboard />;
+  return (
+    <Routes>
+      <Route path="/tasks" element={<Dashboard />} />
+      <Route path="/team" element={<TeamPage />} />
+      <Route path="/" element={<Navigate to="/tasks" replace />} />
+      <Route path="*" element={<Navigate to="/tasks" replace />} />
+    </Routes>
+  );
 };
 
 
 function App() {
   return (
-    // 1. Wrap the entire app in the Auth Context so any component can `useAuth()`
     <AuthProvider>
+      <BrowserRouter>
         <AppRoutes />
+      </BrowserRouter>
     </AuthProvider>
   );
 }

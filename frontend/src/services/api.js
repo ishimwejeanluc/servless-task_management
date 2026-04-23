@@ -18,7 +18,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 second timeout
+  timeout: 10000,
 });
 
 // Request Interceptor: Automatically inject Cognito JWT into Authorization header
@@ -28,7 +28,7 @@ apiClient.interceptors.request.use(
       // Fetch the current session from AWS Amplify (Cognito)
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
-      
+
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -76,6 +76,11 @@ export const TaskService = {
   getTasks: () => apiClient.get('/tasks'),
 
   /**
+   * Fetch users for admin dashboard assignment workflow
+   */
+  getUsers: () => apiClient.get('/users'),
+
+  /**
    * Create a new task (Requires Admin Role)
    */
   createTask: (payload) => apiClient.post('/tasks', payload),
@@ -88,7 +93,7 @@ export const TaskService = {
   /**
    * Assign a task to a user (Requires Admin Role)
    */
-  assignTask: (id, assigneeId) => apiClient.post(`/tasks/${id}/assign`, { assigneeId }),
+  assignTask: (id, assigneeIds) => apiClient.post(`/tasks/${id}/assign`, { assigneeIds }),
 };
 
 export default apiClient;
