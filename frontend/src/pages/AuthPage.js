@@ -5,7 +5,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import styles from './AuthPage.module.css';
 
 const AuthPage = ({ onAuthSuccess }) => {
-    const [mode, setMode] = useState('login'); 
+    const [mode, setMode] = useState('login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [verificationCode, setVerificationCode] = useState('');
@@ -21,13 +21,13 @@ const AuthPage = ({ onAuthSuccess }) => {
         setLoading(true);
         try {
             const { isSignedIn, nextStep } = await signIn({ username: email, password });
-            
+
             if (nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
                 setMode('newPassword');
                 toast.info('You must change your temporary password.');
             } else if (isSignedIn) {
                 toast.success('Welcome back!');
-                onAuthSuccess(); 
+                onAuthSuccess();
             }
         } catch (err) {
             toast.error(err.message || 'Login failed. Check your credentials.');
@@ -55,7 +55,7 @@ const AuthPage = ({ onAuthSuccess }) => {
 
     const handleSignUp = async (e) => {
         e.preventDefault();
-        
+
         if (!validateEmail(email)) {
             toast.warning('Only corporate emails (@amalitech.com) are allowed.');
             return;
@@ -104,7 +104,7 @@ const AuthPage = ({ onAuthSuccess }) => {
             <div className={styles.authWrapper}>
                 <div className={styles.branding}>
                     <div className={styles.logo}>Z</div>
-                    <h1>Zenith</h1>
+                    <h1>Zenith-Task</h1>
                     <p>Enterprise Task Management</p>
                 </div>
 
@@ -115,7 +115,7 @@ const AuthPage = ({ onAuthSuccess }) => {
                         {mode === 'verify' && 'Verify Email'}
                         {mode === 'newPassword' && 'Reset Password'}
                     </h2>
-                    
+
                     {mode === 'newPassword' && (
                         <form onSubmit={handleNewPassword} className={styles.form}>
                             <div className={styles.field}>
