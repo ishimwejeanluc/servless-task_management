@@ -54,3 +54,4 @@ coverage/
 .serverless/
 .aws/
 
+*.pdf
