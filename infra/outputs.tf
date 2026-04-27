@@ -22,3 +22,8 @@ output "dynamodb_table_name" {
   description = "The name of the main tasks DynamoDB table"
   value       = module.dynamodb.table_name
 }
+
+output "frontend_url" {
+  description = "The URL of the deployed Zenith frontend on AWS Amplify"
+  value       = module.hosting.frontend_url 
+}

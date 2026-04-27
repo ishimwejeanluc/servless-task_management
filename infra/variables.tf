@@ -19,3 +19,14 @@ variable "tags" {
     ManagedBy = "Terraform"
   }
 }
+
+variable "repository_url" {
+  description = "The URL of your GitHub repository"
+  type        = string
+}
+
+variable "github_token" {
+  description = "GitHub Personal Access Token"
+  type        = string
+  sensitive   = true
+}

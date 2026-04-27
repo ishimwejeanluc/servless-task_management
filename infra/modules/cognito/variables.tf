@@ -11,3 +11,9 @@ variable "pre_signup_lambda_arn" {
   default     = ""
 }
 
+variable "post_confirmation_lambda_arn" {
+  description = "The ARN of the lambda to auto-assign confirmed users to the Member group."
+  type        = string
+  default     = ""
+}
+

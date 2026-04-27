@@ -22,11 +22,18 @@ resource "aws_iam_role_policy" "create_task_policy" {
   role = aws_iam_role.create_task_role.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["dynamodb:PutItem"]
-      Resource = var.dynamodb_table_arn
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem"]
+        Resource = var.dynamodb_table_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = var.sns_topic_arn
+      }
+    ]
   })
 }
 
@@ -100,7 +107,7 @@ resource "aws_iam_role_policy" "assign_task_policy" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
+        Action   = ["dynamodb:UpdateItem", "dynamodb:GetItem", "cognito-idp:AdminGetUser"]
         Resource = var.dynamodb_table_arn
       },
       {
@@ -120,6 +127,29 @@ resource "aws_iam_role" "pre_signup_role" {
 resource "aws_iam_role_policy_attachment" "pre_signup_basic" {
   role       = aws_iam_role.pre_signup_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role" "post_confirmation_role" {
+  name               = "TaskManagement_PostConfirmationRole"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+}
+resource "aws_iam_role_policy_attachment" "post_confirmation_basic" {
+  role       = aws_iam_role.post_confirmation_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+resource "aws_iam_role_policy" "post_confirmation_policy" {
+  name = "PostConfirmationPolicy"
+  role = aws_iam_role.post_confirmation_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["cognito-idp:AdminAddUserToGroup"]
+        Resource = "*"
+      }
+    ]
+  })
 }
 
 
@@ -146,6 +176,41 @@ resource "aws_iam_role_policy" "notification_handler_policy" {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem"]
         Resource = var.dynamodb_table_arn
+      }
+    ]
+  })
+}
+
+# -----------------------------------------------------
+# LIST USERS ROLE (Cognito ListUsers + DynamoDB Query)
+# -----------------------------------------------------
+resource "aws_iam_role" "list_users_role" {
+  name               = "TaskManagement_ListUsersRole"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+}
+resource "aws_iam_role_policy_attachment" "list_users_basic" {
+  role       = aws_iam_role.list_users_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+resource "aws_iam_role_policy" "list_users_policy" {
+  name = "ListUsersPolicy"
+  role = aws_iam_role.list_users_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = [
+          "cognito-idp:ListUsers",
+          "cognito-idp:ListUsersInGroup",
+          "cognito-idp:AdminListGroupsForUser"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query", "dynamodb:GetItem"]
+        Resource = [var.dynamodb_table_arn, "${var.dynamodb_table_arn}/index/*"]
       }
     ]
   })
