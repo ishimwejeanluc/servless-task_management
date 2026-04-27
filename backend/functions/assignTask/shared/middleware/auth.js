@@ -1,5 +1,4 @@
 const logger = require('../utils/logger');
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
 
 /**
  * Authentication and Role-Checking Middleware
@@ -23,11 +22,7 @@ const requireRole = (allowedRoles = []) => (handler) => async (event, context) =
             logger.warn('Unauthorized attempt: No claims found in request context');
             return {
                 statusCode: 401,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-                    'Access-Control-Allow-Credentials': true
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ error: 'Unauthorized: Missing token claims' })
             };
         }
@@ -49,11 +44,7 @@ const requireRole = (allowedRoles = []) => (handler) => async (event, context) =
             });
             return {
                 statusCode: 403,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-                    'Access-Control-Allow-Credentials': true
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ error: 'Forbidden: Insufficient privileges' })
             };
         }
@@ -61,7 +52,6 @@ const requireRole = (allowedRoles = []) => (handler) => async (event, context) =
         // Inject sanitized user context into event for the main handler to use
         event.user = {
             id: claims.sub,
-            username: claims['cognito:username'] || claims.username,
             email: claims.email,
             groups: userGroups,
             tenantId: claims['custom:tenantId'] || 'DEFAULT_TENANT' // Multi-tenant extraction
@@ -74,11 +64,7 @@ const requireRole = (allowedRoles = []) => (handler) => async (event, context) =
         logger.error('Middleware failure', error);
         return {
             statusCode: 500,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-                'Access-Control-Allow-Credentials': true
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ error: 'Internal Server Error processing authorization' })
         };
     }

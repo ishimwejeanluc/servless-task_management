@@ -7,7 +7,7 @@
  * within the User Pool entirely.
  */
 
-const ALLOWED_DOMAINS = ['amalitech.com', 'amalitechtraining.org'];
+const ALLOWED_DOMAINS = ['amalitech.com', 'amalitechtraining.org', 'gmail.com'];
 
 module.exports.handler = async (event) => {
     console.log(`Received Pre Sign-up Event: ${JSON.stringify(event)}`);
@@ -25,9 +25,8 @@ module.exports.handler = async (event) => {
         throw new Error(`Unauthorized email domain: @${domain}. Only corporate domains are allowed.`);
     }
 
-    // Auto-verify emails from allowed domains so they can log in immediately 
-    // after setting their password (if desired, otherwise remove this to force verification links)
-    event.response.autoConfirmUser = false; // We still want them to click the link/enter code
+
+    event.response.autoConfirmUser = false; 
     event.response.autoVerifyEmail = false; 
 
     // Return the modified (or unmodified) event back to Cognito to proceed

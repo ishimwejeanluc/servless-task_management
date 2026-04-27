@@ -1,92 +1,78 @@
-const logger = require('../../shared/utils/logger');
+const logger = require('./shared/utils/logger');
 const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
-const { unmarshall } = require('@aws-sdk/util-dynamodb');
 
 const sesClient = new SESClient({});
 const SYSTEM_EMAIL = process.env.SYSTEM_EMAIL || 'no-reply@amalitech.com';
+const ADMIN_NOTIFICATION_EMAIL = process.env.BOOTSTRAP_ADMIN_EMAIL || 'jeanluc.ishimwe@amalitech.com';
 
 /**
  * Event-Driven Notification Handler
  * 
- * Invoked by DynamoDB Streams. Processes batched changes to the Tasks table
- * and dispatches emails via Amazon SES when a task is newly assigned or updated.
+ * Invoked by SNS. Processes task notification events and dispatches emails via Amazon SES.
  */
 exports.handler = async (event) => {
-    logger.info('NotificationHandler invoked', { recordCount: event.Records.length });
-    
-    // We process records in batch, but collect individual failures to utilize 
-    // Lambda ReportBatchItemFailures so we don't retry successful items.
-    const failedMessageIds = [];
+    const records = Array.isArray(event?.Records) ? event.Records : [];
+    logger.info('NotificationHandler received SNS event', { recordCount: records.length });
 
-    for (const record of event.Records) {
+    const results = [];
+
+    for (const record of records) {
+        const snsMessageId = record?.Sns?.MessageId;
+        const topicArn = record?.Sns?.TopicArn;
+        const rawMessage = record?.Sns?.Message;
+
         try {
-            // Only care about INSERT (new tasks) and MODIFY (updated tasks)
-            if (record.eventName !== 'INSERT' && record.eventName !== 'MODIFY') {
+            logger.info('Processing SNS record', { snsMessageId, topicArn });
+
+            if (!rawMessage) {
+                logger.warn('SNS record missing message body', { snsMessageId, topicArn });
+                results.push({ messageId: snsMessageId, status: 'skipped' });
                 continue;
             }
 
-            // Unmarshall DynamoDB format ({ S: "value" }) to standard JSON
-            const newImage = unmarshall(record.dynamodb.NewImage || {});
-            const oldImage = record.dynamodb.OldImage ? unmarshall(record.dynamodb.OldImage) : {};
+            const message = typeof rawMessage === 'string' ? JSON.parse(rawMessage) : rawMessage;
+            logger.info('Parsed SNS message', { snsMessageId, topicArn, message });
 
-            // We only send emails if it's a TASK entity
-            if (!newImage.SK || !newImage.SK.startsWith('TASK#')) {
-                continue;
-            }
-
-            const { id, title, assigneeId, status, createdBy } = newImage;
-            
-            // Business Logic: Determine what changed to format the correct email
-            let notificationRequired = false;
+            const assignedUsers = Array.isArray(message.assignedUsers) ? message.assignedUsers.filter(Boolean) : [];
+            let recipients = [];
             let subject = '';
             let bodyText = '';
-            let recipients = [];
 
-            // Scenario 1: New task assigned OR Re-assigned to someone else
-            // PDF Constraint: "To members when tasks are assigned"
-            if (assigneeId !== 'UNASSIGNED' && assigneeId !== oldImage.assigneeId) {
-                notificationRequired = true;
-                subject = `Task Assigned: ${title}`;
-                bodyText = `You have been assigned a new task: "${title}". Task ID: ${id}`;
-                recipients.push(`${assigneeId}@amalitech.com`); // Sending to assignee
-            }
-            // Scenario 2: Task Status Updated
-            // PDF Constraint: "To admins and all assigned members when task status changes"
-            else if (oldImage.status && status !== oldImage.status) {
-                notificationRequired = true;
-                subject = `Task Status Updated: ${title}`;
-                bodyText = `The task "${title}" is now marked as [${status}].`;
-                
-                if (assigneeId !== 'UNASSIGNED') {
-                    recipients.push(`${assigneeId}@amalitech.com`); // Member assignee
-                }
-                if (createdBy) {
-                    recipients.push(`${createdBy}@amalitech.com`);  // Admin creator
-                }
+            if (message.type === 'TASK_ASSIGNED') {
+                recipients = assignedUsers;
+                subject = `Task Assigned: ${message.title || message.taskId}`;
+                bodyText = `You have been assigned a task: "${message.title || message.taskId}". Task ID: ${message.taskId}`;
+            } else if (message.type === 'TASK_STATUS_UPDATED') {
+                recipients = [...assignedUsers, ADMIN_NOTIFICATION_EMAIL];
+                subject = `Task Status Updated: ${message.title || message.taskId}`;
+                bodyText = `The task "${message.title || message.taskId}" is now marked as ${message.status || 'UPDATED'}. Task ID: ${message.taskId}`;
+            } else {
+                logger.warn('Unsupported SNS notification type', { snsMessageId, topicArn, type: message.type });
+                results.push({ messageId: snsMessageId, status: 'skipped' });
+                continue;
             }
 
-            if (notificationRequired && recipients.length > 0) {
-                // Deduplicate emails naturally
-                const uniqueRecipients = [...new Set(recipients)];
-                
-                await dispatchEmail(uniqueRecipients, subject, bodyText);
-                logger.info(`Notification sent`, { taskId: id, recipients: uniqueRecipients });
+            recipients = [...new Set(recipients.filter(Boolean))];
+
+            if (recipients.length === 0) {
+                logger.warn('No notification recipients resolved', { snsMessageId, topicArn, taskId: message.taskId, type: message.type });
+                results.push({ messageId: snsMessageId, status: 'skipped' });
+                continue;
             }
+
+            await dispatchEmail(recipients, subject, bodyText);
+            logger.info('Email notification sent', { snsMessageId, topicArn, taskId: message.taskId, recipients, type: message.type });
+            results.push({ messageId: snsMessageId, status: 'sent' });
 
         } catch (error) {
-            logger.error(`Failed to process DynamoDB stream record`, error, { messageId: record.messageId });
-            // Track the failure so Lambda will explicitly retry just this message, 
-            // protecting us from the "poison pill" poison message loops.
-            failedMessageIds.push(record.messageId);
+            logger.error('Failed to process SNS notification record', error, { snsMessageId, topicArn });
+            results.push({ messageId: snsMessageId, status: 'failed' });
         }
     }
 
-    // Return the failed message IDs. If this array is populated, AWS Lambda
-    // will leave those specific records on the Stream to be retried automatically.
-    // If it fails until the stream expiry (e.g. 24 hours) or max retry limit, 
-    // it will be routed to the configured SQS Dead-Letter Queue (DLQ).
     return {
-        batchItemFailures: failedMessageIds.map(id => ({ itemIdentifier: id }))
+        processed: results.length,
+        results
     };
 };
 

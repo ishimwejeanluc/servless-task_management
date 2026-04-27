@@ -1,5 +1,5 @@
-const { requireRole } = require('../../shared/middleware/auth');
-const logger = require('../../shared/utils/logger');
+const { requireRole } = require('./shared/middleware/auth');
+const logger = require('./shared/utils/logger');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
@@ -7,6 +7,7 @@ const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME;
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
 
 const getTasksHandler = async (event) => {
     logger.info('GetTasks invoked', { userId: event.user.id, groups: event.user.groups, tenantId: event.user.tenantId });
@@ -14,13 +15,10 @@ const getTasksHandler = async (event) => {
     try {
         const isAdmin = event.user.groups.includes('Admin');
         let commandInput;
+        let data;
 
-        // Role-based filtering logic
-        // Decision: We query Dynamo differently depending on who the authenticated caller is
         if (isAdmin) {
-            // Admins fetch ALL tasks belonging to their tenant, bypassing assigned limitations
-            // Trade-off: Could result in a slow query if there are 1M+ tasks per tenant. 
-            // In a real-world scenario, we'd add 'Limit' and 'ExclusiveStartKey' pagination.
+            // Admin: fetch all tasks for tenant
             commandInput = {
                 TableName: TABLE_NAME,
                 KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
@@ -28,29 +26,45 @@ const getTasksHandler = async (event) => {
                     ':pk': `TENANT#${event.user.tenantId}`,
                     ':skPrefix': 'TASK#'
                 },
-                // Fetch up to 100 items by default for safety
                 Limit: 100
             };
+            data = await ddbDocClient.send(new QueryCommand(commandInput));
         } else {
-            // Members only see tasks specifically assigned to them
-            // They query the Global Secondary Index (GSI) based on their identity
+            // Member: only tasks assigned to them
+            // Note: the current table schema does not expose a dedicated assignee GSI,
+            // so we query tenant tasks and filter by assigneeIds membership.
+            const identityCandidates = [event.user.id, event.user.username, event.user.email].filter(Boolean);
+            const filterParts = [];
+            const exprValues = {
+                ':pk': `TENANT#${event.user.tenantId}`,
+                ':skPrefix': 'TASK#'
+            };
+
+            identityCandidates.forEach((value, index) => {
+                const key = `:id${index}`;
+                filterParts.push(`contains(assigneeIds, ${key})`);
+                exprValues[key] = value;
+            });
+
             commandInput = {
                 TableName: TABLE_NAME,
-                IndexName: 'GSI1',
-                KeyConditionExpression: 'GSI1PK = :gsi1pk',
-                ExpressionAttributeValues: {
-                    ':gsi1pk': `ASSIGNEE#${event.user.id}` // GSI Partition mapping to user uuid
-                }
+                KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+                FilterExpression: filterParts.join(' OR '),
+                ExpressionAttributeValues: exprValues,
+                Limit: 100
             };
+            data = await ddbDocClient.send(new QueryCommand(commandInput));
         }
-
-        const data = await ddbDocClient.send(new QueryCommand(commandInput));
 
         logger.info('Tasks retrieved successfully', { count: data.Items.length });
         
         return {
             statusCode: 200,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+                'Access-Control-Allow-Credentials': true
+            },
             body: JSON.stringify(data.Items)
         };
 
@@ -58,11 +72,14 @@ const getTasksHandler = async (event) => {
         logger.error('DynamoDB query failed for getTasks', error);
         return {
             statusCode: 500,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+                'Access-Control-Allow-Credentials': true
+            },
             body: JSON.stringify({ error: 'Failed to retrieve tasks from database' })
         };
     }
 };
 
-// Both Admin and Member can hit this API endpoint, but the Handler filters their view implicitly.
 exports.handler = requireRole(['Admin', 'Member'])(getTasksHandler);

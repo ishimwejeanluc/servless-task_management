@@ -1,0 +1,9 @@
+{
+  "name": "notification-handler",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-ses": "^3.500.0",
+    "@aws-sdk/util-dynamodb": "^3.500.0"
+  }
+}

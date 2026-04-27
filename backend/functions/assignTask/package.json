@@ -1,5 +1,8 @@
 {
+  "name": "assign-task",
+  "version": "1.0.0",
   "dependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.1030.0"
+    "@aws-sdk/client-cognito-identity-provider": "^3.1030.0",
+    "aws-sdk": "^2.1570.0"
   }
 }
